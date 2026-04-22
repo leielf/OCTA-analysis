@@ -13,7 +13,7 @@ from mask_utils import (
 from process_images import *
 
 # Adjust these if needed
-INPUT_IMAGE = Path("/Users/leielf/Desktop/uni/cvut/semestral project/medical_images/chlorochin_vfn/1/ODHR_choriocapillaris.JPG")
+INPUT_IMAGE = Path("medical_images/chlorochin_vfn/1/ODHR_choriocapillaris.JPG")
 OUTPUT_DIR = Path("output_test_mask")
 
 
