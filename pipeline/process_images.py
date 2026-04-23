@@ -79,19 +79,6 @@ def stage1_crop(patient_dirs: list[Path]) -> list[dict]:
 
 # ── Stage 2: center-crop to uniform size ──────────────────────────────────────
 
-def stage2_resize(crops: list[dict]) -> list[dict]:
-    """Center-crop all images to the minimum size across the dataset."""
-    min_h = min(c["inner_crop"].shape[0] for c in crops)
-    min_w = min(c["inner_crop"].shape[1] for c in crops)
-    print(f"\nUniform size: {min_w}x{min_h}")
-
-    for c in crops:
-        c["inner_crop"] = center_crop_np(c["inner_crop"], min_h, min_w)
-
-    return crops
-
-
-
 def stage2_compute_common_center_crop(crops: list[dict]):
     """
     Compute the common centered square half-size across all images.
