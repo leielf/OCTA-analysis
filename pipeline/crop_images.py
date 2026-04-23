@@ -55,3 +55,45 @@ def center_crop_np(img: np.ndarray, target_h: int, target_w: int) -> np.ndarray:
     y = (img.shape[0] - target_h) // 2
     x = (img.shape[1] - target_w) // 2
     return img[y:y+target_h, x:x+target_w]
+
+
+def mask_density_center(mask: np.ndarray) -> tuple[int, int]:
+    """
+    Find the center as the row and column with the highest mask density.
+    """
+    cx, cy = 0, 0
+    prev_frac = 0.0
+    for y in range(mask.shape[0]):
+        row = mask[y, :]
+        masked_cols = np.where(row == 255)[0]
+        if len(masked_cols) == 0:
+            continue
+        frac = len(masked_cols) / mask.shape[1]
+        # print(f"y= {y}, frac= {frac}")
+        if frac > prev_frac:
+            cy = y
+            prev_frac = frac
+
+    prev_frac = 0.0
+    for x in range(mask.shape[1]):
+        col = mask[:, x]
+        masked_rows = np.where(col == 255)[0]
+        if len(masked_rows) == 0:
+            continue
+        frac = len(masked_rows) / mask.shape[0]
+        # print(f"y= {x}, frac= {frac}")
+        if frac > prev_frac:
+            cx = x
+            prev_frac = frac
+    return cx, cy
+
+def crop_square_around_mask(image: np.ndarray, cx:int, cy:int, half_size_x: int, half_size_y:int) -> np.ndarray:
+    """
+    Crop a square region centered on the arrows in the mask.
+    """
+    x1 = cx - half_size_x
+    x2 = cx + half_size_x
+    y1 = cy - half_size_y
+    y2 = cy + half_size_y
+
+    return image[y1:y2, x1:x2].copy()
