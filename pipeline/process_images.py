@@ -6,8 +6,8 @@ from PIL import Image
 from mask_arrows import build_arrow_mask, fill_arrow_lines
 from crop_images import *
 
-INPUT_DIR        = Path("/medical_images/chlorochin_vfn")
-OUTPUT_DIR       = Path("/medical_images/output")
+INPUT_DIR        = Path("/Users/leielf/Desktop/uni/cvut/semestral project/medical_images/chlorochin_vfn")
+OUTPUT_DIR       = Path("/Users/leielf/Desktop/uni/cvut/semestral project/medical_images/output_center_arrow_cropped")
 ALLOWED_PREFIXES = ("ODHR", "OSHR")
 MIN_CROP_SIZE    = 100
 MIN_VALID_RATIO  = 0.60
@@ -91,10 +91,34 @@ def stage2_resize(crops: list[dict]) -> list[dict]:
     return crops
 
 
-# ── Stage 3: build masks + grayscale, save everything ─────────────────────────
 
-def stage3_masks_and_save(crops: list[dict]) -> None:
-    shared_mask = None
+def stage2_compute_common_center_crop(crops: list[dict]):
+    """
+    Compute the common centered square half-size across all images.
+    """
+    half_sizes_x = []
+    half_sizes_y = []
+
+    for c in crops:
+        mask = c["final_mask"]
+        cx = c["record"]["cx"]
+        cy = c["record"]["cy"]
+        h, w = mask.shape[:2]
+        half_size_x = min(cx, w - cx - 1)
+        half_size_y = min(cy, h - cy - 1)
+        half_sizes_x.append(half_size_x)
+        half_sizes_y.append(half_size_y)
+
+    print(f"min x = { min(half_sizes_x)}, min y = { min(half_sizes_y)}")
+    print(f"max x = { max(half_sizes_x)}, max y = { max(half_sizes_y)}")
+    return min(half_sizes_x), min(half_sizes_y)
+
+
+
+
+# ── Stage 3: build masks only ───────────────────────────────────────────────────
+
+def stage3_build_masks(crops: list[dict]) -> tuple[list[dict], np.ndarray | None]:
     records_by_subject: dict[str, list[dict]] = {}
 
     for c in crops:
@@ -120,6 +144,8 @@ def stage3_masks_and_save(crops: list[dict]) -> None:
         try:
             arrow_mask = build_arrow_mask(inner_crop)
             arrow_mask = fill_arrow_lines(arrow_mask)
+            cx, cy = mask_density_center(arrow_mask)
+            record.update({"cx": cx, "cy":cy})
         except RuntimeError as e:
             record["reason"] = str(e)
             print(f"  [FAIL] {jpg_path.name}: {e}")
@@ -135,43 +161,85 @@ def stage3_masks_and_save(crops: list[dict]) -> None:
             records_by_subject.setdefault(subject, []).append(record)
             continue
 
-        masked_image = cv2.bitwise_and(inner_crop, inner_crop, mask=final_mask)
+        record["status"] = "ok"
+        record["reason"] = "ok"
+        record["mask_path"] = "__PENDING__"
 
-        try:
-            gray_float = prepare_gray_image(masked_image, final_mask)
-        except ValueError as e:
-            record["reason"] = str(e)
-            print(f"  [FAIL] {jpg_path.name}: {e}")
-            records_by_subject.setdefault(subject, []).append(record)
+        c["final_mask"] = final_mask
+        c["record"] = record
+
+        records_by_subject.setdefault(subject, []).append(record)
+
+    return records_by_subject
+
+
+# ── Stage 4: centered crop + save outputs ─────────────────────────────────────
+
+def stage4_center_crop_and_save(crops: list[dict],
+                                records_by_subject: dict[str, list[dict]]) -> None:
+    half_size_x, half_size_y = stage2_compute_common_center_crop(crops)
+
+    shared_mask = None
+    for c in crops:
+        if "final_mask" not in c:
             continue
 
-        gray_u8 = (gray_float * 255).astype(np.uint8)
+        jpg_path   = c["jpg_path"]
+        subject    = c["subject"]
+        inner_crop = c["inner_crop"]
+        stem       = jpg_path.stem
+        final_mask = c["final_mask"]
+        record     = c["record"]
+
+        try:
+            centered_image = crop_square_around_mask(inner_crop, record["cx"], record["cy"], half_size_x, half_size_y)
+            c["inner_crop"] = centered_image
+            centered_mask = crop_square_around_mask(final_mask, record["cx"], record["cy"], half_size_x, half_size_y)
+            c["final_mask"] = centered_mask
+        except ValueError as e:
+            record["status"] = "failed"
+            record["reason"] = str(e)
+            print(f"  [FAIL] {jpg_path.name}: {e}")
+            continue
+
+        final_mask = centered_mask
+        shared_mask = (final_mask if shared_mask is None
+                       else cv2.bitwise_and(shared_mask, final_mask))
+
+        shared_mask = cv2.bitwise_not(fill_arrow_lines(cv2.bitwise_not(shared_mask)))
+
+        masked_image = cv2.bitwise_and(centered_image, centered_image, mask=shared_mask)
+
+        # try:
+            # gray_float = prepare_gray_image(masked_image, final_mask)
+        # except ValueError as e:
+        #     record["status"] = "failed"
+        #     record["reason"] = str(e)
+        #     print(f"  [FAIL] {jpg_path.name}: {e}")
+        #     continue
+
+        # gray_u8 = (gray_float * 255).astype(np.uint8)
 
         out_dir = OUTPUT_DIR / subject
         out_dir.mkdir(parents=True, exist_ok=True)
 
         octa_path = out_dir / f"{stem}_octa.png"
         mask_path = out_dir / f"{stem}_mask.png"
-        gray_path = out_dir / f"{stem}_gray.png"
+        masked_path = out_dir / f"{stem}_masked.png"
+        # gray_path = out_dir / f"{stem}_gray.png"
 
-        cv2.imwrite(str(octa_path), inner_crop)
+        cv2.imwrite(str(octa_path), centered_image)
         cv2.imwrite(str(mask_path), final_mask)
-        cv2.imwrite(str(gray_path), gray_u8)
+        cv2.imwrite(str(masked_path), masked_image)
+        # cv2.imwrite(str(gray_path), gray_u8)
 
-        record["status"]    = "ok"
-        record["reason"]    = "ok"
         record["octa_path"] = str(octa_path)
         record["mask_path"] = str(mask_path)
-        record["gray_path"] = str(gray_path)
+        # record["gray_path"] = str(gray_path)
+        record["status"] = "ok"
+        record["reason"] = "ok"
         print(f"  [OK]  {jpg_path.name}")
 
-        # accumulate shared mask — AND so only pixels valid in ALL images are kept
-        shared_mask = (final_mask if shared_mask is None
-                       else cv2.bitwise_and(shared_mask, final_mask))
-
-        records_by_subject.setdefault(subject, []).append(record)
-
-    # ── Save shared mask ───────────────────────────────────────────────────
     if shared_mask is not None:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         shared_path = OUTPUT_DIR / "shared_mask.png"
@@ -180,10 +248,9 @@ def stage3_masks_and_save(crops: list[dict]) -> None:
     else:
         print("\nNo masks built.")
 
-    # ── Save CSVs per patient ──────────────────────────────────────────────
     fieldnames = ["file_name", "stem", "subject", "eye", "status",
                   "crop_width", "crop_height", "octa_path",
-                  "mask_path", "gray_path", "reason"]
+                  "mask_path", "gray_path", "reason", "cx", "cy"]
     for subject, records in records_by_subject.items():
         out_dir = OUTPUT_DIR / subject
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -208,11 +275,10 @@ def main():
         print("No images successfully cropped.")
         return
 
-    crops = stage2_resize(crops)
-    stage3_masks_and_save(crops)
+    records_by_subject = stage3_build_masks(crops)
+    stage4_center_crop_and_save(crops, records_by_subject)
 
     print("\nDone.")
-
 
 if __name__ == "__main__":
     main()
