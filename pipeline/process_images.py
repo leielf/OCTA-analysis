@@ -3,15 +3,19 @@ import numpy as np
 import csv
 from pathlib import Path
 from PIL import Image
+import argparse
 from mask_arrows import build_arrow_mask, fill_arrow_lines
 from crop_images import *
 
-INPUT_DIR        = Path("/Users/leielf/Desktop/uni/cvut/semestral project/medical_images/chlorochin_vfn")
-OUTPUT_DIR       = Path("/Users/leielf/Desktop/uni/cvut/semestral project/medical_images/output_center_arrow_cropped")
 ALLOWED_PREFIXES = ("ODHR", "OSHR")
 MIN_CROP_SIZE    = 100
 MIN_VALID_RATIO  = 0.60
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input_dir", type=Path)
+    parser.add_argument("output_dir", type=Path)
+    return parser.parse_args()
 
 def prepare_gray_image(image: np.ndarray, final_mask: np.ndarray) -> np.ndarray:
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
@@ -35,7 +39,6 @@ def get_eye_label(stem: str) -> str:
 
 
 # ── Stage 1: crop to cross extent ─────────────────────────────────────────────
-
 def stage1_crop(patient_dirs: list[Path]) -> list[dict]:
     """Crop all images to cross extent, return list of successful crop records."""
     crops = []
@@ -77,8 +80,6 @@ def stage1_crop(patient_dirs: list[Path]) -> list[dict]:
     return crops
 
 
-# ── Stage 2: center-crop to uniform size ──────────────────────────────────────
-
 def compute_common_center_crop(crops: list[dict]):
     """
     Compute the common centered square half-size across all images.
@@ -104,7 +105,6 @@ def compute_common_center_crop(crops: list[dict]):
 
 
 # ── Stage 2: build masks only ───────────────────────────────────────────────────
-
 def stage2_build_masks(crops: list[dict]) -> tuple[list[dict], np.ndarray | None]:
     records_by_subject: dict[str, list[dict]] = {}
 
@@ -161,9 +161,9 @@ def stage2_build_masks(crops: list[dict]) -> tuple[list[dict], np.ndarray | None
 
 
 # ── Stage 3: centered crop + save outputs ─────────────────────────────────────
-
 def stage3_center_crop_and_save(crops: list[dict],
-                                records_by_subject: dict[str, list[dict]]) -> None:
+                                records_by_subject: dict[str, list[dict]],
+                                OUTPUT_DIR: Path) -> None:
     half_size_x, half_size_y = compute_common_center_crop(crops)
 
     shared_mask = None
@@ -246,8 +246,10 @@ def stage3_center_crop_and_save(crops: list[dict],
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
-
 def main():
+    args = parse_args()
+    INPUT_DIR = args.input_dir
+    OUTPUT_DIR = args.output_dir
     patient_dirs = sorted([d for d in INPUT_DIR.iterdir() if d.is_dir()])
     if not patient_dirs:
         print(f"No patient subfolders found in {INPUT_DIR}")
@@ -259,8 +261,7 @@ def main():
         return
 
     records_by_subject = stage2_build_masks(crops)
-    stage3_center_crop_and_save(crops, records_by_subject)
-
+    stage3_center_crop_and_save(crops, records_by_subject, OUTPUT_DIR)
     print("\nDone.")
 
 if __name__ == "__main__":
