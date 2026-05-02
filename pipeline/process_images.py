@@ -79,7 +79,7 @@ def stage1_crop(patient_dirs: list[Path]) -> list[dict]:
 
 # ── Stage 2: center-crop to uniform size ──────────────────────────────────────
 
-def stage2_compute_common_center_crop(crops: list[dict]):
+def compute_common_center_crop(crops: list[dict]):
     """
     Compute the common centered square half-size across all images.
     """
@@ -103,9 +103,9 @@ def stage2_compute_common_center_crop(crops: list[dict]):
 
 
 
-# ── Stage 3: build masks only ───────────────────────────────────────────────────
+# ── Stage 2: build masks only ───────────────────────────────────────────────────
 
-def stage3_build_masks(crops: list[dict]) -> tuple[list[dict], np.ndarray | None]:
+def stage2_build_masks(crops: list[dict]) -> tuple[list[dict], np.ndarray | None]:
     records_by_subject: dict[str, list[dict]] = {}
 
     for c in crops:
@@ -160,11 +160,11 @@ def stage3_build_masks(crops: list[dict]) -> tuple[list[dict], np.ndarray | None
     return records_by_subject
 
 
-# ── Stage 4: centered crop + save outputs ─────────────────────────────────────
+# ── Stage 3: centered crop + save outputs ─────────────────────────────────────
 
-def stage4_center_crop_and_save(crops: list[dict],
+def stage3_center_crop_and_save(crops: list[dict],
                                 records_by_subject: dict[str, list[dict]]) -> None:
-    half_size_x, half_size_y = stage2_compute_common_center_crop(crops)
+    half_size_x, half_size_y = compute_common_center_crop(crops)
 
     shared_mask = None
     for c in crops:
@@ -195,8 +195,6 @@ def stage4_center_crop_and_save(crops: list[dict],
 
         shared_mask = cv2.bitwise_not(fill_arrow_lines(cv2.bitwise_not(shared_mask)))
 
-        masked_image = cv2.bitwise_and(centered_image, centered_image, mask=shared_mask)
-
         # try:
             # gray_float = prepare_gray_image(masked_image, final_mask)
         # except ValueError as e:
@@ -212,12 +210,10 @@ def stage4_center_crop_and_save(crops: list[dict],
 
         octa_path = out_dir / f"{stem}_octa.png"
         mask_path = out_dir / f"{stem}_mask.png"
-        masked_path = out_dir / f"{stem}_masked.png"
         # gray_path = out_dir / f"{stem}_gray.png"
 
         cv2.imwrite(str(octa_path), centered_image)
         cv2.imwrite(str(mask_path), final_mask)
-        cv2.imwrite(str(masked_path), masked_image)
         # cv2.imwrite(str(gray_path), gray_u8)
 
         record["octa_path"] = str(octa_path)
@@ -262,8 +258,8 @@ def main():
         print("No images successfully cropped.")
         return
 
-    records_by_subject = stage3_build_masks(crops)
-    stage4_center_crop_and_save(crops, records_by_subject)
+    records_by_subject = stage2_build_masks(crops)
+    stage3_center_crop_and_save(crops, records_by_subject)
 
     print("\nDone.")
 
