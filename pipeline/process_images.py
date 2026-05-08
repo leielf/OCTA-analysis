@@ -4,7 +4,7 @@ import csv
 from pathlib import Path
 from PIL import Image
 import argparse
-from mask_arrows import build_arrow_mask, fill_arrow_lines
+from mask_arrows import build_arrow_mask, fill_arrow_lines, fill_arrow_lines2, find_arrow_center
 from crop_images import *
 
 ALLOWED_PREFIXES = ("ODHR", "OSHR")
@@ -130,8 +130,7 @@ def stage2_build_masks(crops: list[dict]) -> tuple[list[dict], np.ndarray | None
 
         try:
             arrow_mask = build_arrow_mask(inner_crop)
-            arrow_mask = fill_arrow_lines(arrow_mask)
-            cx, cy = mask_density_center(arrow_mask)
+            cx, cy = find_arrow_center(arrow_mask)
             record.update({"cx": cx, "cy":cy})
         except RuntimeError as e:
             record["reason"] = str(e)
@@ -189,11 +188,9 @@ def stage3_center_crop_and_save(crops: list[dict],
             print(f"  [FAIL] {jpg_path.name}: {e}")
             continue
 
-        final_mask = centered_mask
+        final_mask = c["final_mask"]
         shared_mask = (final_mask if shared_mask is None
                        else cv2.bitwise_and(shared_mask, final_mask))
-
-        shared_mask = cv2.bitwise_not(fill_arrow_lines(cv2.bitwise_not(shared_mask)))
 
         # try:
             # gray_float = prepare_gray_image(masked_image, final_mask)
@@ -223,6 +220,10 @@ def stage3_center_crop_and_save(crops: list[dict],
         record["reason"] = "ok"
         print(f"  [OK]  {jpg_path.name}")
 
+    line2 = cv2.bitwise_not(fill_arrow_lines(cv2.bitwise_not(shared_mask)))
+    line1 = cv2.bitwise_not(fill_arrow_lines2(cv2.bitwise_not(shared_mask)))
+
+    shared_mask = cv2.bitwise_and(line2, line1)
     if shared_mask is not None:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         shared_path = OUTPUT_DIR / "shared_mask.png"
@@ -230,6 +231,27 @@ def stage3_center_crop_and_save(crops: list[dict],
         print(f"\nShared mask saved → {shared_path}")
     else:
         print("\nNo masks built.")
+
+    coverage = float(np.count_nonzero(cv2.bitwise_not(shared_mask))) / shared_mask.size
+    print(f"Arrow mask coverage: {coverage:.1%}")
+
+    # colorful_mask = cv2.bitwise_not(shared_mask).astype(np.uint8) * 255
+
+    # sanity check: mask should not cover most of the image
+
+
+    # for c in crops:
+    #     jpg_path = c["jpg_path"]
+    #     subject = c["subject"]
+    #     inner_crop = c["inner_crop"]
+    #     stem = jpg_path.stem
+    #     # overlay
+    #     overlay = inner_crop.copy()
+    #     overlay[shared_mask == 255] = (0, 255, 255)
+    #     out_dir = OUTPUT_DIR / subject
+    #     out_dir.mkdir(parents=True, exist_ok=True)
+    #     masked_path = out_dir / f"{stem}_mask_overlay.png"
+    #     cv2.imwrite(str(masked_path), overlay)
 
     fieldnames = ["file_name", "stem", "subject", "eye", "status",
                   "crop_width", "crop_height", "octa_path",
