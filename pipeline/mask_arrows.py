@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from scipy import stats
 from scipy.signal import find_peaks
 
 # ── Arrow mask builder ────────────────────────────────────────────────────────
@@ -62,7 +63,20 @@ def fill_arrow_lines(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
             continue
         if len(masked_cols) / mask.shape[1] > threshold:
             filled[y, :] = 255
+        else:
+            filled[y, :] = 0
+    return filled
 
+
+def fill_arrow_lines2(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
+    """
+    Fill entire rows/columns that are predominantly arrow pixels.
+
+    Arrows often span full rows or columns in OCTA report images. Any row or
+    column where more than `threshold` fraction of pixels are masked is filled
+    entirely.
+    """
+    filled = mask.copy()
     for x in range(mask.shape[1]):
         col = mask[:, x]
         masked_rows = np.where(col == 255)[0]
@@ -70,9 +84,49 @@ def fill_arrow_lines(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
             continue
         if len(masked_rows) / mask.shape[0] > threshold:
             filled[:, x] = 255
+        else:
+            filled[:, x] = 0
 
     return filled
 
+
+def find_mode_of_arrows(mask: np.ndarray) -> tuple[int, int, int. int]:
+    left_edges = []
+    right_edges = []
+
+    for y in range(mask.shape[0]):
+        cols = np.where(mask[y, :] == 255)[0]
+        if len(cols) == 0:
+            continue
+        left_edges.append(cols[0])
+        right_edges.append(cols[-1])
+
+    top_edges = []
+    bottom_edges = []
+
+    for x in range(mask.shape[1]):
+        rows = np.where(mask[:, x] == 255)[0]
+        if len(rows) == 0:
+            continue
+        top_edges.append(rows[0])
+        bottom_edges.append(rows[-1])
+
+    if not left_edges or not top_edges:
+        raise ValueError("No arrow pixels found in mask.")
+
+    left_mode = stats.mode(left_edges).mode
+    right_mode = stats.mode(right_edges).mode
+    top_mode = stats.mode(top_edges).mode
+    bottom_mode = stats.mode(bottom_edges).mode
+
+    return left_mode, right_mode, top_mode, bottom_mode
+
+def find_arrow_center(mask: np.ndarray) -> tuple[int, int]:
+    left_mode, right_mode, top_mode, bottom_mode = find_mode_of_arrows(mask)
+
+    cx = int(left_mode + (right_mode - left_mode) / 2)
+    cy = int(top_mode  + (bottom_mode - top_mode)  / 2)
+    return cx, cy
 
 # ── Diagnostic plots ──────────────────────────────────────────────────────────
 def save_otsu_debug(img: np.ndarray, out_prefix) -> None:
