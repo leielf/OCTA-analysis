@@ -6,11 +6,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from pipeline.mask_arrows import fill_arrow_lines_individual_masks
-
-OUTPUT_ROOT = Path("/Users/leielf/Desktop/uni/cvut/semestral project/medical_images/output")
 AUTOCORR_BINS = 10
-
 
 def prepare_gray_for_autocorrelation(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """
@@ -272,78 +268,9 @@ def process_autocorrelation_folder(
 
     print(f"\nSaved features to: {csv_path}")
 
-def process_autocorrelation_folder_indiv_masks(
-    output_dir: Path,
-    image_suffix: str = "_octa.png",
-    mask_suffix: str = "_mask.png",
-    save_maps: bool = True,
-    grayscale: bool = True,
-) -> None:
-    rows = []
-
-    for image_path in sorted(output_dir.glob(f"*/*{image_suffix}")):
-        try:
-            # derive mask path from image path
-            mask_path = image_path.with_name(
-                image_path.name.replace(image_suffix, mask_suffix)
-            )
-
-            if not mask_path.exists():
-                print(f"[SKIP] No mask found for {image_path.name} (expected {mask_path.name})")
-                continue
-
-            image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
-            mask  = cv2.imread(str(mask_path),  cv2.IMREAD_GRAYSCALE)
-            mask = cv2.bitwise_not(fill_arrow_lines_individual_masks(cv2.bitwise_not(mask)))
-
-            if image is None:
-                print(f"[SKIP] Could not read image: {image_path}")
-                continue
-
-            if mask is None:
-                print(f"[SKIP] Could not read mask: {mask_path}")
-                continue
-
-            stacked_mask = np.stack([mask, mask, mask], axis=-1)
-            gray = image
-            if grayscale:
-                stacked_mask = mask
-                gray = prepare_gray_for_autocorrelation(image, stacked_mask)
-            ac = autocorrelation_2d(gray, stacked_mask)
-            features = extract_autocorrelation_features(ac)
-
-            if save_maps:
-                ac_path = image_path.with_name(image_path.stem + "_autocorrelation.npy")
-                np.save(str(ac_path), ac)
-
-            row = {
-                "subject": image_path.parent.name,
-                "file": image_path.name,
-                **features,
-            }
-            rows.append(row)
-
-            print(f"[OK] {image_path.name}")
-
-        except ValueError as e:
-            print(f"[FAIL] {image_path}: {e}")
-
-    if not rows:
-        print("No autocorrelation features were extracted.")
-        return
-
-    csv_path = output_dir / "autocorrelation_features_indiv_masks_no_grayscale.csv"
-    with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
-
-    print(f"\nSaved features to: {csv_path}")
-
-
 if __name__ == "__main__":
     OUTPUT_DIR = Path("/Users/leielf/Desktop/uni/cvut/semestral project/medical_images/output_center_arrow_cropped")
     process_autocorrelation_folder(OUTPUT_DIR)
-    process_autocorrelation_folder_indiv_masks(OUTPUT_DIR)
+
 
 
