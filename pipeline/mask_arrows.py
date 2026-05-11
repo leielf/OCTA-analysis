@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 from scipy import stats
-from scipy.signal import find_peaks
 
 # ── Arrow mask builder ────────────────────────────────────────────────────────
 def build_arrow_mask(img: np.ndarray,
@@ -46,7 +45,7 @@ def build_arrow_mask(img: np.ndarray,
 
 
 # ── Line filling ──────────────────────────────────────────────────────────────
-def fill_arrow_lines(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
+def fill_arrow_lines_individual_masks(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
     """
     Fill entire rows/columns that are predominantly arrow pixels.
 
@@ -65,16 +64,45 @@ def fill_arrow_lines(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
             filled[y, :] = 255
         else:
             filled[y, :] = 0
+
+    for x in range(mask.shape[1]):
+        col = mask[:, x]
+        masked_rows = np.where(col == 255)[0]
+        if len(masked_rows) == 0:
+            continue
+        if len(masked_rows) / mask.shape[0] > threshold:
+            filled[:, x] = 255
+
+    return filled
+
+
+def fill_arrow_lines(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
+    """
+    Fill entire columns that are predominantly arrow pixels.
+
+    Any column where more than `threshold` fraction of pixels are masked is filled
+    entirely, otherwise it is considered as a valid region (not a mask anymore)
+    """
+    filled = mask.copy()
+
+    for y in range(mask.shape[0]):
+        row = mask[y, :]
+        masked_cols = np.where(row == 255)[0]
+        if len(masked_cols) == 0:
+            continue
+        if len(masked_cols) / mask.shape[1] > threshold:
+            filled[y, :] = 255
+        else:
+            filled[y, :] = 0
     return filled
 
 
 def fill_arrow_lines2(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
     """
-    Fill entire rows/columns that are predominantly arrow pixels.
+    Fill entire rows that are predominantly arrow pixels.
 
-    Arrows often span full rows or columns in OCTA report images. Any row or
-    column where more than `threshold` fraction of pixels are masked is filled
-    entirely.
+    Any row where more than `threshold` fraction of pixels are masked is filled
+    entirely, otherwise it is considered as a valid region (not a mask anymore)
     """
     filled = mask.copy()
     for x in range(mask.shape[1]):
@@ -90,7 +118,7 @@ def fill_arrow_lines2(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
     return filled
 
 
-def find_mode_of_arrows(mask: np.ndarray) -> tuple[int, int, int. int]:
+def find_mode_of_arrows(mask: np.ndarray) -> tuple[int, int, int, int]:
     left_edges = []
     right_edges = []
 
