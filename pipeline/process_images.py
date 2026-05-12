@@ -4,7 +4,7 @@ import csv
 from pathlib import Path
 from PIL import Image
 import argparse
-from mask_arrows import build_arrow_mask, fill_arrow_lines, fill_arrow_lines2, find_arrow_center
+from mask_arrows import build_arrow_mask, fill_vertical_arrow, fill_horizontal_arrow, find_arrow_center
 from crop_images import *
 
 ALLOWED_PREFIXES = ("ODHR", "OSHR")
@@ -220,8 +220,8 @@ def stage3_center_crop_and_save(crops: list[dict],
         record["reason"] = "ok"
         print(f"  [OK]  {jpg_path.name}")
 
-    line2 = cv2.bitwise_not(fill_arrow_lines(cv2.bitwise_not(shared_mask)))
-    line1 = cv2.bitwise_not(fill_arrow_lines2(cv2.bitwise_not(shared_mask)))
+    line2 = cv2.bitwise_not(fill_vertical_arrow(cv2.bitwise_not(shared_mask)))
+    line1 = cv2.bitwise_not(fill_horizontal_arrow(cv2.bitwise_not(shared_mask)))
 
     shared_mask = cv2.bitwise_and(line2, line1)
     if shared_mask is not None:

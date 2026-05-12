@@ -45,7 +45,7 @@ def build_arrow_mask(img: np.ndarray,
 
 
 # ── Line filling ──────────────────────────────────────────────────────────────
-def fill_arrow_lines(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
+def fill_vertical_arrow(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
     """
     Fill entire columns that are predominantly arrow pixels.
 
@@ -66,7 +66,7 @@ def fill_arrow_lines(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
     return filled
 
 
-def fill_arrow_lines2(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
+def fill_horizontal_arrow(mask: np.ndarray, threshold: float = 0.4) -> np.ndarray:
     """
     Fill entire rows that are predominantly arrow pixels.
 
