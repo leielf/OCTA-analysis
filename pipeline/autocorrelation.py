@@ -32,23 +32,25 @@ def prepare_gray_for_autocorrelation(image: np.ndarray, mask: np.ndarray) -> np.
     if gray.shape != mask.shape:
         raise ValueError(f"Image and mask must have the same shape, got {gray.shape} and {mask.shape}")
 
-    # valid = mask > 0
-    #
-    # if not np.any(valid):
-    #     raise ValueError("Mask contains no valid pixels.")
-
-    # valid_pixels = gray[valid]
-    #
-    # p1, p99 = np.percentile(valid_pixels, [1, 99])
-    #
-    # if p99 <= p1:
-    #     raise ValueError("Invalid intensity range for normalization.")
-    #
-    # gray = np.clip((gray - p1) / (p99 - p1), 0.0, 1.0)
-    # gray[~valid] = 0.0
+# normalization
+#     valid = mask > 0
+#
+#     if not np.any(valid):
+#         raise ValueError("Mask contains no valid pixels.")
+#
+#     valid_pixels = gray[valid]
+#
+#     p1, p99 = np.percentile(valid_pixels, [1, 99])
+#
+#     if p99 <= p1:
+#         raise ValueError("Invalid intensity range for normalization.")
+#
+#     gray = np.clip((gray - p1) / (p99 - p1), 0.0, 1.0)
+#     gray[~valid] = 0.0
 
     return gray
 
+# NOT used, percentile normalization is used when converting to grayscale
 def normalize_inside_mask(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
     if image.shape != mask.shape:
         raise ValueError(f"Image and mask must have the same shape, got {image.shape} and {mask.shape}")
@@ -58,14 +60,13 @@ def normalize_inside_mask(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
     if not np.any(valid):
         raise ValueError("Mask contains no valid pixels.")
 
+    # z - score normalization
     pixels = image[valid]
 
-    p1, p99 = np.percentile(pixels, [1, 99])
+    mu = pixels.mean()
+    sigma = pixels.std()
 
-    if p99 <= p1:
-        raise ValueError("Invalid intensity range inside mask.")
-
-    normalized = np.clip((image - p1) / (p99 - p1), 0.0, 1.0)
+    normalized = (image - mu) / (sigma + 1e-12)
     normalized[~valid] = 0.0
 
     return normalized
@@ -192,7 +193,7 @@ def anisotropy(ac: np.ndarray, max_offset: int = 80) -> float:
     )
 
 
-def extract_autocorrelation_features(ac: np.ndarray, max_radius: int = 100) -> dict:
+def extract_autocorrelation_features(ac: np.ndarray, max_radius: int = 30) -> dict:
     profile = radial_profile(ac, max_radius=max_radius)
 
     return {
@@ -201,8 +202,6 @@ def extract_autocorrelation_features(ac: np.ndarray, max_radius: int = 100) -> d
         "anisotropy": anisotropy(ac, max_offset=min(80, max_radius)),
         "radial_mean_0_10": float(np.nanmean(profile[0:11])),
         "radial_mean_10_30": float(np.nanmean(profile[10:31])),
-        "radial_mean_30_60": float(np.nanmean(profile[30:61])),
-        "radial_mean_60_100": float(np.nanmean(profile[60:101])),
     }
 
 
@@ -211,7 +210,6 @@ def process_autocorrelation_folder(
     image_suffix: str = "_octa.png",
     mask_name: str = "shared_mask.png",
     save_maps: bool = True,
-    grayscale: bool = True,
 ) -> None:
     shared_mask_path = output_dir / mask_name
     shared_mask = cv2.imread(str(shared_mask_path), cv2.IMREAD_GRAYSCALE)
@@ -229,14 +227,9 @@ def process_autocorrelation_folder(
                 print(f"[SKIP] Could not read image: {image_path}")
                 continue
 
-            stacked_mask = np.stack([shared_mask, shared_mask, shared_mask], axis=-1)
-            gray = image
-            if grayscale:
-                stacked_mask = shared_mask
-                gray = prepare_gray_for_autocorrelation(image, stacked_mask)
-            # gray = prepare_gray_for_autocorrelation(image, np.stack([shared_mask, shared_mask, shared_mask], axis=-1)) if grayscale else image
-            print(f"stacked_mask shape = {stacked_mask.shape} gray shape = {gray.shape}")
-            ac = autocorrelation_2d(gray, stacked_mask)
+            gray = prepare_gray_for_autocorrelation(image, shared_mask)
+            print(f"mask shape = {shared_mask.shape} gray shape = {gray.shape}")
+            ac = autocorrelation_2d(gray, shared_mask)
             features = extract_autocorrelation_features(ac)
 
             if save_maps:
@@ -259,7 +252,7 @@ def process_autocorrelation_folder(
         print("No autocorrelation features were extracted.")
         return
 
-    csv_path = output_dir / "autocorrelation_features_no_grayscale.csv"
+    csv_path = output_dir / "autocorrelation_features.csv"
 
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
